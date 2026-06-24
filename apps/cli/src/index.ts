@@ -21,6 +21,10 @@ type Draft = {
   tags: string[];
 };
 
+type UploadResult = {
+  date: string;
+};
+
 const appDir = join(homedir(), ".my-days");
 const draftsDir = join(appDir, "drafts");
 const configPath = join(appDir, "config.json");
@@ -63,6 +67,18 @@ async function ask(question: string): Promise<string> {
   }
 }
 
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
+
+function isYes(value: string): boolean {
+  return ["y", "yes"].includes(value.trim().toLowerCase());
+}
+
+function isNo(value: string): boolean {
+  return ["n", "no"].includes(value.trim().toLowerCase());
+}
+
 async function readConfig(): Promise<Config> {
   if (!existsSync(configPath)) {
     throw new Error("Missing config. Run `daylog init` first.");
@@ -100,18 +116,17 @@ function normalizeMood(value: string): string {
   return moods.has(normalized) ? normalized : "normal";
 }
 
-async function addCommand() {
+async function createDraft(includeVibe: boolean): Promise<Draft | null> {
   await ensureAppDirs();
   const date = todayYmd();
   const path = draftPath(date);
-  const includeVibe = process.argv.includes("--vibe");
 
   // draft 是本地缓存，上传失败也不会丢记录。
   if (existsSync(path)) {
-    const overwrite = (await ask(`Draft for ${date} already exists. Overwrite? (y/N): `)).toLowerCase();
-    if (overwrite !== "y" && overwrite !== "yes") {
+    const overwrite = await ask(`Draft for ${date} already exists. Overwrite? (y/N): `);
+    if (!isYes(overwrite)) {
       console.log("Keeping existing draft.");
-      return;
+      return null;
     }
   }
 
@@ -139,11 +154,10 @@ async function addCommand() {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(draft, null, 2), "utf8");
   console.log(`Saved draft to ${path}`);
+  return draft;
 }
 
-async function pushCommand() {
-  const config = await readConfig();
-  const draft = await readDraft();
+async function uploadDraft(draft: Draft, config: Config): Promise<UploadResult> {
   const url = `${config.serverUrl.replace(/\/+$/, "")}/api/logs`;
 
   // 服务器端只接受带 API Token 的写入请求。
@@ -161,8 +175,36 @@ async function pushCommand() {
     throw new Error(`Upload failed (${response.status}). Draft kept. ${text}`);
   }
 
-  const result = await response.json();
-  console.log(`Uploaded ${result.date} successfully. Draft kept at ${draftPath()}`);
+  return (await response.json()) as UploadResult;
+}
+
+async function pushDraft(draft?: Draft): Promise<UploadResult> {
+  const config = await readConfig();
+  const draftToUpload = draft ?? (await readDraft());
+  const result = await uploadDraft(draftToUpload, config);
+  console.log(`Uploaded ${result.date} successfully. Draft kept at ${draftPath(result.date)}`);
+  console.log(`View: ${config.serverUrl.replace(/\/+$/, "")}/days/${result.date}`);
+  return result;
+}
+
+async function addCommand() {
+  const draft = await createDraft(hasFlag("--vibe"));
+  if (!draft) return;
+
+  const uploadAnswer = await ask("Upload now? (Y/n): ");
+  if (isNo(uploadAnswer)) {
+    console.log("Draft saved locally. Run `daylog push` when you are ready.");
+    return;
+  }
+
+  await pushDraft(draft);
+}
+
+async function doneCommand() {
+  const draft = await createDraft(hasFlag("--vibe"));
+  if (!draft) return;
+
+  await pushDraft(draft);
 }
 
 async function todayCommand() {
@@ -225,12 +267,14 @@ async function statsCommand() {
 
 function printHelp() {
   console.log(`daylog commands:
-  init        Create ~/.my-days/config.json
-  add         Create today's local draft
-  add --vibe  Create today's draft and ask for vibe
-  push        Upload today's draft
-  today       Show today's local draft
-  stats       Show remote stats
+  init          Create ~/.my-days/config.json
+  add           Create today's draft, then ask whether to upload
+  add --vibe    Create today's draft with vibe, then ask whether to upload
+  done          Create today's draft and upload immediately
+  done --vibe   Create today's draft with vibe and upload immediately
+  push          Upload today's draft
+  today         Show today's local draft
+  stats         Show remote stats
 `);
 }
 
@@ -244,8 +288,11 @@ async function main() {
     case "add":
       await addCommand();
       break;
+    case "done":
+      await doneCommand();
+      break;
     case "push":
-      await pushCommand();
+      await pushDraft();
       break;
     case "today":
       await todayCommand();

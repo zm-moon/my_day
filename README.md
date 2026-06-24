@@ -170,6 +170,32 @@ apiToken: 和服务器 MY_DAYS_API_TOKEN 一样
 serverUrl: http://localhost:3000
 ```
 
+## 最方便的记录方式
+
+推荐每天直接运行：
+
+```bash
+daylog done
+```
+
+它会完成两件事：
+
+```txt
+询问今天记录 -> 保存本地 draft -> 自动上传到服务器
+```
+
+如果想额外记录 vibe：
+
+```bash
+daylog done --vibe
+```
+
+上传成功后会显示当天详情页链接，例如：
+
+```txt
+View: https://days.mydarling.space/days/2026-06-25
+```
+
 ## 添加今天的记录
 
 ```bash
@@ -210,6 +236,14 @@ daylog add --vibe
 
 如果今天已经有 draft，CLI 会询问是否覆盖。
 
+`daylog add` 保存 draft 后会继续询问：
+
+```txt
+Upload now? (Y/n):
+```
+
+直接回车会立即上传；输入 `n` 会只保存本地 draft。
+
 ## 上传今天的记录
 
 ```bash
@@ -224,6 +258,26 @@ Authorization: Bearer {apiToken}
 ```
 
 上传失败时不会删除本地 draft。
+
+## Windows 双击记录
+
+项目根目录提供了：
+
+```txt
+record-my-day.bat
+```
+
+在 Windows 上可以双击它。它会自动进入项目目录并执行：
+
+```bash
+node apps\cli\dist\index.js done
+```
+
+如果改过 CLI 代码，记得先重新构建：
+
+```bash
+npm run cli:build
+```
 
 ## 查看今天的本地 draft
 
