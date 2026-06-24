@@ -1,4 +1,5 @@
 import type { PublicDayLog } from "@/lib/stats";
+import { formatDateTimeMinute } from "@/lib/date";
 
 type DayCardProps = {
   log: PublicDayLog;
@@ -28,6 +29,12 @@ export function DayCard({ log }: DayCardProps) {
           <p className="mt-2 whitespace-pre-wrap leading-7 text-slate-100">{log.vibe}</p>
         </section>
       ) : null}
+      {log.notes ? (
+        <section className="mt-5">
+          <h2 className="text-sm uppercase tracking-[0.18em] text-slate-500">Notes</h2>
+          <p className="mt-2 whitespace-pre-wrap leading-7 text-slate-100">{log.notes}</p>
+        </section>
+      ) : null}
       {log.tags.length ? (
         <div className="mt-5 flex flex-wrap gap-2">
           {log.tags.map((tag) => (
@@ -37,6 +44,10 @@ export function DayCard({ log }: DayCardProps) {
           ))}
         </div>
       ) : null}
+      <div className="mt-6 border-t border-line/70 pt-4 text-xs leading-6 text-slate-500">
+        <div>Created: {formatDateTimeMinute(log.createdAt)}</div>
+        <div>Updated: {formatDateTimeMinute(log.updatedAt)}</div>
+      </div>
     </article>
   );
 }

@@ -1,7 +1,8 @@
 import { Heatmap } from "@/components/Heatmap";
+import { RecentLogs } from "@/components/RecentLogs";
 import { StatsCard } from "@/components/StatsCard";
 import { prisma } from "@/lib/prisma";
-import { calculateStats, toPublicDayLog } from "@/lib/stats";
+import { calculateStats, recentLogs, toPublicDayLog } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export default async function HomePage() {
     }
   })).map(toPublicDayLog);
   const stats = calculateStats(logs);
+  const latestLogs = recentLogs(logs);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-8 sm:px-6 lg:px-8">
@@ -30,6 +32,10 @@ export default async function HomePage() {
 
       <section className="mt-8">
         <Heatmap logs={logs} />
+      </section>
+
+      <section className="mt-8">
+        <RecentLogs logs={latestLogs} />
       </section>
     </main>
   );

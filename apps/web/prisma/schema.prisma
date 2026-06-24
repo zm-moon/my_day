@@ -13,6 +13,7 @@ model DayLog {
   today     String
   tomorrow  String
   vibe      String?
+  notes     String?
   mood      String?
   tags      String[]
   score     Int      @default(1)

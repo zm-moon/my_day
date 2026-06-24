@@ -9,6 +9,7 @@ type LogRequestBody = {
   today?: unknown;
   tomorrow?: unknown;
   vibe?: unknown;
+  notes?: unknown;
   mood?: unknown;
   tags?: unknown;
 };
@@ -42,9 +43,11 @@ export async function POST(request: Request) {
     ? body.tags.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean)
     : [];
   const vibe = typeof body.vibe === "string" && body.vibe.trim() ? body.vibe.trim() : null;
+  const notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
   const mood = typeof body.mood === "string" && body.mood.trim() ? body.mood.trim() : null;
-  const score = calculateScore(body.today, body.tomorrow, vibe);
+  const score = calculateScore(body.today, body.tomorrow, notes, vibe);
 
+  // 同一天重复 push 时更新记录，而不是创建重复数据。
   const log = await prisma.dayLog.upsert({
     where: {
       date: dateFromYmd(body.date)
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
       today: body.today.trim(),
       tomorrow: body.tomorrow.trim(),
       vibe,
+      notes,
       mood,
       tags,
       score
@@ -62,6 +66,7 @@ export async function POST(request: Request) {
       today: body.today.trim(),
       tomorrow: body.tomorrow.trim(),
       vibe,
+      notes,
       mood,
       tags,
       score

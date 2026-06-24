@@ -12,8 +12,9 @@ export type Stats = {
   yearDays: number;
 };
 
-export function calculateScore(today: string, tomorrow: string, vibe?: string | null): number {
-  const totalText = `${today ?? ""}${tomorrow ?? ""}${vibe ?? ""}`.trim();
+// score 代表一天记录的“信息量”，用于控制热力图颜色深浅。
+export function calculateScore(today: string, tomorrow: string, notes?: string | null, vibe?: string | null): number {
+  const totalText = `${today ?? ""}${tomorrow ?? ""}${notes ?? ""}${vibe ?? ""}`.trim();
   const count = Array.from(totalText).length;
 
   if (count === 0) return 0;
@@ -52,4 +53,14 @@ export function calculateStats(logs: Array<Pick<PublicDayLog, "date">>): Stats {
     }).length,
     yearDays: logs.filter((log) => dateFromYmd(log.date).getFullYear() === currentYear).length
   };
+}
+
+// 首页只展示最近一段时间内真实存在的记录，不为没有记录的日期生成空卡片。
+export function recentLogs(logs: PublicDayLog[], days = 30): PublicDayLog[] {
+  const today = dateFromYmd(todayYmd());
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days + 1);
+
+  return logs
+    .filter((log) => dateFromYmd(log.date) >= start)
+    .sort((a, b) => b.date.localeCompare(a.date));
 }

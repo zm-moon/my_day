@@ -15,7 +15,8 @@ type Draft = {
   date: string;
   today: string;
   tomorrow: string;
-  vibe: string;
+  notes: string | null;
+  vibe: string | null;
   mood: string | null;
   tags: string[];
 };
@@ -24,6 +25,14 @@ const appDir = join(homedir(), ".my-days");
 const draftsDir = join(appDir, "drafts");
 const configPath = join(appDir, "config.json");
 const moods = new Set(["good", "normal", "tired", "sad", "excited"]);
+// mood 支持短输入，降低每天记录时的打字成本。
+const moodAliases = new Map([
+  ["g", "good"],
+  ["n", "normal"],
+  ["t", "tired"],
+  ["s", "sad"],
+  ["e", "excited"]
+]);
 
 function todayYmd(): string {
   const now = new Date();
@@ -84,11 +93,20 @@ async function initCommand() {
   console.log(`Saved config to ${configPath}`);
 }
 
+function normalizeMood(value: string): string {
+  const normalized = moodAliases.get(value.toLowerCase()) ?? value.toLowerCase();
+
+  if (!normalized) return "normal";
+  return moods.has(normalized) ? normalized : "normal";
+}
+
 async function addCommand() {
   await ensureAppDirs();
   const date = todayYmd();
   const path = draftPath(date);
+  const includeVibe = process.argv.includes("--vibe");
 
+  // draft 是本地缓存，上传失败也不会丢记录。
   if (existsSync(path)) {
     const overwrite = (await ask(`Draft for ${date} already exists. Overwrite? (y/N): `)).toLowerCase();
     if (overwrite !== "y" && overwrite !== "yes") {
@@ -99,10 +117,10 @@ async function addCommand() {
 
   const today = await ask("今天做了什么？\n> ");
   const tomorrow = await ask("明天要做什么？\n> ");
-  const vibe = await ask("今日 vibe？\n> ");
-  const moodInput = (await ask("mood (good/normal/tired/sad/excited, optional): ")).toLowerCase();
-  const tagsInput = await ask("tags (comma separated, optional): ");
-  const mood = moodInput && moods.has(moodInput) ? moodInput : null;
+  const notesInput = await ask("额外想记录的内容？可留空\n> ");
+  const vibeInput = includeVibe ? await ask("今日 vibe？可留空\n> ") : "";
+  const moodInput = await ask("mood? [good/normal/tired/sad/excited] default normal: ");
+  const tagsInput = await ask("tags? comma separated, optional: ");
   const tags = tagsInput
     .split(",")
     .map((tag) => tag.trim())
@@ -112,8 +130,9 @@ async function addCommand() {
     date,
     today,
     tomorrow,
-    vibe,
-    mood,
+    notes: notesInput || null,
+    vibe: vibeInput || null,
+    mood: normalizeMood(moodInput),
     tags
   };
 
@@ -127,6 +146,7 @@ async function pushCommand() {
   const draft = await readDraft();
   const url = `${config.serverUrl.replace(/\/+$/, "")}/api/logs`;
 
+  // 服务器端只接受带 API Token 的写入请求。
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -150,6 +170,18 @@ async function todayCommand() {
   console.log(JSON.stringify(draft, null, 2));
 }
 
+function parseYmd(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function ymdFromDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function calculateStats(dates: string[]) {
   const set = new Set(dates);
   const now = new Date();
@@ -158,7 +190,7 @@ function calculateStats(dates: string[]) {
   let currentStreak = 0;
   let cursor = new Date(year, month, now.getDate());
 
-  while (set.has(todayString(cursor))) {
+  while (set.has(ymdFromDate(cursor))) {
     currentStreak += 1;
     cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - 1);
   }
@@ -172,18 +204,6 @@ function calculateStats(dates: string[]) {
     }).length,
     yearDays: dates.filter((date) => parseYmd(date).getFullYear() === year).length
   };
-}
-
-function parseYmd(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function todayString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 async function statsCommand() {
@@ -205,11 +225,12 @@ async function statsCommand() {
 
 function printHelp() {
   console.log(`daylog commands:
-  init    Create ~/.my-days/config.json
-  add     Create today's local draft
-  push    Upload today's draft
-  today   Show today's local draft
-  stats   Show remote stats
+  init        Create ~/.my-days/config.json
+  add         Create today's local draft
+  add --vibe  Create today's draft and ask for vibe
+  push        Upload today's draft
+  today       Show today's local draft
+  stats       Show remote stats
 `);
 }
 
