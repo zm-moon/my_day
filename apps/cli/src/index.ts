@@ -1,0 +1,249 @@
+#!/usr/bin/env node
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+
+type Config = {
+  serverUrl: string;
+  apiToken: string;
+};
+
+type Draft = {
+  date: string;
+  today: string;
+  tomorrow: string;
+  vibe: string;
+  mood: string | null;
+  tags: string[];
+};
+
+const appDir = join(homedir(), ".my-days");
+const draftsDir = join(appDir, "drafts");
+const configPath = join(appDir, "config.json");
+const moods = new Set(["good", "normal", "tired", "sad", "excited"]);
+
+function todayYmd(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function draftPath(date = todayYmd()): string {
+  return join(draftsDir, `${date}.json`);
+}
+
+async function ensureAppDirs() {
+  await mkdir(draftsDir, { recursive: true });
+}
+
+function createPrompt() {
+  return createInterface({ input, output });
+}
+
+async function ask(question: string): Promise<string> {
+  const rl = createPrompt();
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function readConfig(): Promise<Config> {
+  if (!existsSync(configPath)) {
+    throw new Error("Missing config. Run `daylog init` first.");
+  }
+
+  return JSON.parse(await readFile(configPath, "utf8")) as Config;
+}
+
+async function readDraft(date = todayYmd()): Promise<Draft> {
+  const path = draftPath(date);
+  if (!existsSync(path)) {
+    throw new Error(`No draft found for ${date}. Run \`daylog add\` first.`);
+  }
+
+  return JSON.parse(await readFile(path, "utf8")) as Draft;
+}
+
+async function initCommand() {
+  await ensureAppDirs();
+  const serverUrl = (await ask("serverUrl (example: https://mydomain.com): ")).replace(/\/+$/, "");
+  const apiToken = await ask("apiToken: ");
+
+  if (!serverUrl || !apiToken) {
+    throw new Error("serverUrl and apiToken are required.");
+  }
+
+  await writeFile(configPath, JSON.stringify({ serverUrl, apiToken }, null, 2), "utf8");
+  console.log(`Saved config to ${configPath}`);
+}
+
+async function addCommand() {
+  await ensureAppDirs();
+  const date = todayYmd();
+  const path = draftPath(date);
+
+  if (existsSync(path)) {
+    const overwrite = (await ask(`Draft for ${date} already exists. Overwrite? (y/N): `)).toLowerCase();
+    if (overwrite !== "y" && overwrite !== "yes") {
+      console.log("Keeping existing draft.");
+      return;
+    }
+  }
+
+  const today = await ask("今天做了什么？\n> ");
+  const tomorrow = await ask("明天要做什么？\n> ");
+  const vibe = await ask("今日 vibe？\n> ");
+  const moodInput = (await ask("mood (good/normal/tired/sad/excited, optional): ")).toLowerCase();
+  const tagsInput = await ask("tags (comma separated, optional): ");
+  const mood = moodInput && moods.has(moodInput) ? moodInput : null;
+  const tags = tagsInput
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  const draft: Draft = {
+    date,
+    today,
+    tomorrow,
+    vibe,
+    mood,
+    tags
+  };
+
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(draft, null, 2), "utf8");
+  console.log(`Saved draft to ${path}`);
+}
+
+async function pushCommand() {
+  const config = await readConfig();
+  const draft = await readDraft();
+  const url = `${config.serverUrl.replace(/\/+$/, "")}/api/logs`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${config.apiToken}`
+    },
+    body: JSON.stringify(draft)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Upload failed (${response.status}). Draft kept. ${text}`);
+  }
+
+  const result = await response.json();
+  console.log(`Uploaded ${result.date} successfully. Draft kept at ${draftPath()}`);
+}
+
+async function todayCommand() {
+  const draft = await readDraft();
+  console.log(JSON.stringify(draft, null, 2));
+}
+
+function calculateStats(dates: string[]) {
+  const set = new Set(dates);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  let currentStreak = 0;
+  let cursor = new Date(year, month, now.getDate());
+
+  while (set.has(todayString(cursor))) {
+    currentStreak += 1;
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - 1);
+  }
+
+  return {
+    totalDays: set.size,
+    currentStreak,
+    monthDays: dates.filter((date) => {
+      const parsed = parseYmd(date);
+      return parsed.getFullYear() === year && parsed.getMonth() === month;
+    }).length,
+    yearDays: dates.filter((date) => parseYmd(date).getFullYear() === year).length
+  };
+}
+
+function parseYmd(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function todayString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+async function statsCommand() {
+  const config = await readConfig();
+  const response = await fetch(`${config.serverUrl.replace(/\/+$/, "")}/api/logs`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load logs (${response.status}).`);
+  }
+
+  const logs = (await response.json()) as Array<{ date: string }>;
+  const stats = calculateStats(logs.map((log) => log.date));
+
+  console.log(`Total days: ${stats.totalDays}`);
+  console.log(`Current streak: ${stats.currentStreak}`);
+  console.log(`This month: ${stats.monthDays}`);
+  console.log(`This year: ${stats.yearDays}`);
+}
+
+function printHelp() {
+  console.log(`daylog commands:
+  init    Create ~/.my-days/config.json
+  add     Create today's local draft
+  push    Upload today's draft
+  today   Show today's local draft
+  stats   Show remote stats
+`);
+}
+
+async function main() {
+  const command = process.argv[2];
+
+  switch (command) {
+    case "init":
+      await initCommand();
+      break;
+    case "add":
+      await addCommand();
+      break;
+    case "push":
+      await pushCommand();
+      break;
+    case "today":
+      await todayCommand();
+      break;
+    case "stats":
+      await statsCommand();
+      break;
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":
+      printHelp();
+      break;
+    default:
+      throw new Error(`Unknown command: ${command}`);
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

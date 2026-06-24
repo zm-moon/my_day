@@ -1,0 +1,16 @@
+{
+  "name": "my-days",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/cli"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/web run dev",
+    "build": "npm --workspace apps/web run build && npm --workspace apps/cli run build",
+    "typecheck": "npm --workspace apps/web run typecheck && npm --workspace apps/cli run typecheck",
+    "prisma:generate": "npm --workspace apps/web run prisma:generate",
+    "prisma:migrate": "npm --workspace apps/web run prisma:migrate",
+    "cli:build": "npm --workspace apps/cli run build"
+  }
+}

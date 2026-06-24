@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DayLog {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  today     String
+  tomorrow  String
+  vibe      String?
+  mood      String?
+  tags      String[]
+  score     Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: my-days-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: my_days
+      POSTGRES_USER: my_days_user
+      POSTGRES_PASSWORD: my_days_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - my_days_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  my_days_postgres_data:

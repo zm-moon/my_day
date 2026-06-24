@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+.env
+*.tsbuildinfo
+
+apps/web/.next/
+apps/web/.env
+apps/web/tsconfig.tsbuildinfo
+apps/cli/dist/
